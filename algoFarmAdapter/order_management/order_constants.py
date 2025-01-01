@@ -48,3 +48,9 @@ class OrderStatus(Enum):
     AB09 = "open pending"
     AB10 = "trigger pending"
     AB11 = "modify pending"
+
+
+class MessageTypes(Enum):
+    PLACE_ORDER_MESSAGE="PlaceOrderMessage"
+    MODIFY_ORDER_MESSAGE = "ModifyOrderRequest"
+    CANCEL_ORDER_MESSAGE = "CancelOrderRequest"
