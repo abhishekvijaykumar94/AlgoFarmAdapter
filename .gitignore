@@ -8,7 +8,7 @@ logs/
 *.DS_Store
 *.ds_store
 test/
-
+algoFarmAdapter.egg-info/
 *idea/
 .DS_Store
 bin/.DS_Store
