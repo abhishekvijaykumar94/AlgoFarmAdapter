@@ -6,9 +6,9 @@ class Variety(Enum):
     AMO = "After Market Order"
     ROBO = "ROBO (Bracket Order)"
 
-class TransactionType(Enum):
-    BUY = "Buy"
-    SELL = "Sell"
+# class TransactionType(Enum):
+#     BUY = "Buy"
+#     SELL = "Sell"
 
 class OrderType(Enum):
     MARKET = "Market Order (MKT)"
@@ -36,6 +36,7 @@ class Exchange(Enum):
     CDS = "Currency Derivate Segment"
 
 class OrderStatus(Enum):
+    AB = "sent"
     AB00 = "after-successful connection"
     AB01 = "open"
     AB02 = "cancelled"
@@ -54,3 +55,5 @@ class MessageTypes(Enum):
     PLACE_ORDER_MESSAGE="PlaceOrderMessage"
     MODIFY_ORDER_MESSAGE = "ModifyOrderRequest"
     CANCEL_ORDER_MESSAGE = "CancelOrderRequest"
+
+

@@ -1,6 +1,9 @@
-
+import json
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Dict, Any
+
+from algoFarmAdapter.order_management.order_constants import OrderStatus
+
 
 
 class smartApiOrderDataClass():
@@ -47,7 +50,7 @@ class smartApiOrderDataClass():
 @dataclass
 class PlaceOrderRequest(smartApiOrderDataClass):
 
-    _message_type="PlaceOrderMessage"
+
     variety: str
     tradingsymbol: str
     symboltoken: str
@@ -58,6 +61,7 @@ class PlaceOrderRequest(smartApiOrderDataClass):
     duration: str
     quantity: str
     price: Optional[str] = None
+    _message_type: str = "PlaceOrderMessage"
     squareoff: str = "0"
     stoploss: str = "0"
 
@@ -73,6 +77,17 @@ class PlaceOrderResponse(smartApiOrderDataClass):
     message: str
     errorcode: str
     data: PlaceOrderResponseData
+
+    @staticmethod
+    def from_json(json_data: Dict[str, Any]) -> "PlaceOrderResponse":
+        """Creates a PlaceOrderResponse instance from a JSON dictionary."""
+        return PlaceOrderResponse(
+            status=json_data["status"],
+            message=json_data["message"],
+            errorcode=json_data["errorcode"],
+            data=PlaceOrderResponseData(**json_data["data"])
+        )
+
 
 @dataclass
 class ModifyOrderRequest(smartApiOrderDataClass):
@@ -118,112 +133,69 @@ class CancelOrderResponse(smartApiOrderDataClass):
     errorcode: str
     data: CancelOrderResponseData
 
+
+
 @dataclass
-class OrderData:
+class Order:
+
+    orderid: str
     variety: str
     ordertype: str
-    ordertag: str
     producttype: str
     price: float
-    triggerprice: float
     quantity: str
-    disclosedquantity: str
     duration: str
     squareoff: float
     stoploss: float
-    trailingstoploss: float
     tradingsymbol: str
     transactiontype: str
     exchange: str
     symboltoken: str
-    instrumenttype: Optional[str]
-    strikeprice: float
-    optiontype: Optional[str]
-    expirydate: Optional[str]
-    lotsize: str
-    cancelsize: str
-    averageprice: float
-    filledshares: str
-    unfilledshares: str
-    orderid: str
-    text: Optional[str]
-    status: str
-    orderstatus: str
-    updatetime: str
-    exchtime: Optional[str]
-    exchorderupdatetime: Optional[str]
-    fillid: Optional[str]
-    filltime: Optional[str]
-    parentorderid: Optional[str]
-    packageid: Optional[str] #TODO Figure out how to populate strategy ID
-    uniqueorderid: str
-
-@dataclass
-class OrderResponse(smartApiOrderDataClass):
-    user_id: str
-    status_code: str
-    order_status: str
-    error_message: Optional[str]
-    orderData: OrderData
+    strategy: str
+    id: Optional[int] = None
+    ordertag: Optional[str] = None
+    triggerprice: Optional[float] = None
+    disclosedquantity: Optional[str] = None
+    trailingstoploss: Optional[float] = None
+    instrumenttype: Optional[str] = None
+    strikeprice: Optional[float]= None
+    optiontype: Optional[str]= None
+    expirydate: Optional[str]= None
+    lotsize: Optional[str]= None
+    cancelsize: Optional[str]= None
+    averageprice: Optional[str]= None
+    filledshares: Optional[str]= None
+    unfilledshares: Optional[str]= None
+    text: Optional[str]= None
+    status: Optional[str]= None
+    orderstatus: Optional[str]= None
+    updatetime: Optional[str]= None
+    exchtime: Optional[str]= None
+    exchorderupdatetime: Optional[str]= None
+    fillid: Optional[str]= None
+    filltime: Optional[str]= None
+    parentorderid: Optional[str]= None
+    packageid: Optional[str] = None#TODO Figure out how to populate strategy ID
+    uniqueorderid: Optional[str]= None
 
 
-if __name__=="__main__":
-    # Example JSON string
-    json_str = '''{
-        "user-id": "Your_client_code",
-        "status-code": "200",
-        "order-status": "AB03",
-        "error-message": "",
-        "orderData": {
-            "variety": "NORMAL",
-            "ordertype": "LIMIT",
-            "ordertag": "10007712",
-            "producttype": "DELIVERY",
-            "price": 551,
-            "triggerprice": 0,
-            "quantity": "1",
-            "disclosedquantity": "0",
-            "duration": "DAY",
-            "squareoff": 0,
-            "stoploss": 0,
-            "trailingstoploss": 0,
-            "tradingsymbol": "SBIN-EQ",
-            "transactiontype": "BUY",
-            "exchange": "NSE",
-            "symboltoken": "3045",
-            "instrumenttype": "",
-            "strikeprice": -1,
-            "optiontype": "",
-            "expirydate": "",
-            "lotsize": "1",
-            "cancelsize": "0",
-            "averageprice": 0,
-            "filledshares": "0",
-            "unfilledshares": "1",
-            "orderid": "111111111111111",
-            "text": "Adapter is Logged Off",
-            "status": "rejected",
-            "orderstatus": "rejected",
-            "updatetime": "25-Oct-2023 23:53:21",
-            "exchtime": "",
-            "exchorderupdatetime": "",
-            "fillid": "",
-            "filltime": "",
-            "parentorderid": ""
-        }
-    }'''
+    def update_order_response(self,order_response:'OrderResponse'):
 
-    # Parse JSON and create OrderResponse object
-    import json
+        if order_response.order_status == OrderStatus.AB05:
 
-    data = json.loads(json_str)
-    order_data = OrderData(**data["orderData"])
-    order_response = OrderResponse(
-        user_id=data["user-id"],
-        status_code=data["status-code"],
-        order_status=data["order-status"],
-        error_message=data.get("error-message"),
-        orderData=order_data
-    )
+            self.orderstatus = order_response.order_status
+            self.filledshares = order_response.orderData.filledshares
+            self.unfilledshares = order_response.orderData.unfilledshares
+            self.averageprice = order_response.orderData.averageprice
+            self.exchorderupdatetime = order_response.orderData.exchorderupdatetime
 
-    print(order_response)
+        elif order_response.order_status == OrderStatus.AB02 or order_response.order_status == OrderStatus.AB03:
+
+            self.orderstatus = order_response.order_status
+            self.exchorderupdatetime = order_response.orderData.exchorderupdatetime
+
+
+
+
+
+
