@@ -14,7 +14,7 @@ class SmartApiConnectionManager:
             self.username = username
             self.password = password
             self.token = token
-        self.smartConnect = SmartConnect(api_key=self.api_key)
+        self.smart_connect = SmartConnect(api_key=self.api_key)
 
     def load_from_config(self):
         self.username = PropertyManager.getValue('clientCode')
@@ -22,10 +22,10 @@ class SmartApiConnectionManager:
         self.token = PropertyManager.getValue('token')
 
     def generate_session(self):
-        data = self.smartConnect.generateSession(self.username,self.password,pyotp.TOTP(self.token).now())
-        self.res = self.smartConnect.getProfile(data['data']['refreshToken'])
-        self.feedToken = self.smartConnect.getfeedToken();
-        return data,self.feedToken
+        data = self.smart_connect.generateSession(self.username,self.password,pyotp.TOTP(self.token).now())
+        self.res = self.smart_connect.getProfile(data['data']['refreshToken'])
+        self.feed_token = self.smart_connect.getfeedToken()
+        return data,self.feed_token
 
     def refresh_token(self):
         # Code to refresh token

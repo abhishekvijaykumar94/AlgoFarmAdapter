@@ -130,6 +130,7 @@ class TokenListGenerator:
                 self.data_repository.save(equity_option_instrument_do, repository_info)
             except Exception:
                 log.info("Symbol:{}, already exists in the database".format(row.get('symbol')))
+
     def save_equity_cash_instruments(self,equity_cash):
         repository_info = RepositoryInfo(cache_domain=False)
         equity_cash_instrument_list = []
@@ -146,14 +147,19 @@ class TokenListGenerator:
             except Exception:
                 log.info("Symbol:{}, already exists in the database".format(row.get('symbol')))
 
-    def save_subscription_symbols(self,subscribed_symbol_list):
+    def save_subscription_symbols(self, subscribed_symbol_list, subscribed_token_list):
         current_datetime = datetime.now()
         ticker_subscription_list = []
         repository_info = RepositoryInfo(cache_domain=False)
-        for symbol in subscribed_symbol_list:
-            ticker_subscription = TickerSubscription(ticker_symbol=symbol,
-                                                     subscription_date=current_datetime)
+
+        for symbol, token in zip(subscribed_symbol_list, subscribed_token_list):
+            ticker_subscription = TickerSubscription(
+                ticker_symbol=symbol,
+                token=token,  # Assuming you want to use the token here
+                subscription_date=current_datetime
+            )
             ticker_subscription_list.append(ticker_subscription)
+
         ticker_subscription_do = TickerSubscriptionDO(data=ticker_subscription_list)
         self.data_repository.save(ticker_subscription_do, repository_info)
 
@@ -162,6 +168,7 @@ class TokenListGenerator:
         list_fo=self.fetch_fo_list()
         list_fo.dropna(inplace=True)
         subscribed_symbol_list = []
+        subscribed_token_list = []
         # Fetch the latest instrument data
         self.instrument_data_fetcher.fetch_instrument_data()
 
@@ -174,6 +181,7 @@ class TokenListGenerator:
 
         equity_tokens_df = pd.concat([stock_tokens_df, index_tokens_df], ignore_index=True)
         subscribed_symbol_list.extend(equity_tokens_df['symbol'])
+        subscribed_token_list.extend(equity_tokens_df['token'])
         self.save_equity_cash_instruments(equity_tokens_df)
         # Combine tokens
         token_list = stock_tokens_list + index_tokens_list
@@ -189,6 +197,8 @@ class TokenListGenerator:
 
         subscribed_symbol_list.extend(future_syms)
         subscribed_symbol_list.extend(option_syms)
+        subscribed_token_list.extend(weekly_expiry_df['token'])
+        subscribed_token_list.extend(monthly_expiry_df['token'])
         # Get option tokens
         options_df, options_tokens_list = self.stream_list(option_syms, "NFO", "OPTIDX")
         self.save_equity_option_instruments(equity_tokens_df,options_df)
@@ -206,8 +216,8 @@ class TokenListGenerator:
         # Combine all DataFrames for token mapping
         final_df = pd.concat([stock_tokens_df, index_tokens_df, options_df, futures_df], axis=0, ignore_index=True)
 
-        self.save_subscription_symbols(subscribed_symbol_list)
+        self.save_subscription_symbols(subscribed_symbol_list,subscribed_token_list)
         # Save the updated token mapping
-        final_df.to_csv(CommonUtils.getFilePathFromDataDirectory('Token_mapping_test.csv'), index=False)
+        final_df.to_csv(CommonUtils.get_file_path_from_data_directory('Token_mapping_test.csv'), index=False)
 
         return token_list

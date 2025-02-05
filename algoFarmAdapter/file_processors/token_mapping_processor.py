@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd
 from datetime import datetime
 from algoLibs import CommonUtils
@@ -8,7 +10,7 @@ class TokenMappingProcessor:
         if file_path is None:
             self.token_mapping_path = CommonUtils.getFilePathFromDataDirectory(token_mapping_file_name)
         else:
-            self.token_mapping_path = file_path
+            self.token_mapping_path = os.path.join(file_path,token_mapping_file_name)
 
         # Load and clean the token mapping data
         self.token_mapping = pd.read_csv(self.token_mapping_path, skip_blank_lines=True)
@@ -60,6 +62,11 @@ class TokenMappingProcessor:
     def get_index_underlying_tokens(self):
         filtered_token_df = self.token_mapping[self.token_mapping['instrumenttype'] == 'AMXIDX']
         return filtered_token_df['token'].unique()
+
+    def get_symbols_and_tokens(self):
+        symbol_list = self.token_mapping['symbol'].tolist()
+        token_list = self.token_mapping['token'].tolist()
+        return symbol_list,token_list
 
     def get_token_to_symbol_dict(self):
         self.token_mapping.sort_values(by=['token', 'date'], ascending=[True, False], inplace=True)
