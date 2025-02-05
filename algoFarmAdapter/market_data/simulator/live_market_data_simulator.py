@@ -4,7 +4,10 @@ import time
 from datetime import datetime
 
 import pandas as pd
-from algoLibs import DateRangeProcessor, BotoConnectionManager, CommonUtils, PropertyManager, AppConstants
+from algoLibs import DateRangeProcessor, BotoConnectionManager, CommonUtils, PropertyManager, AppConstants, \
+    RepositoryInfo, TickerSubscription, TickerSubscriptionDO, DataRepository
+
+from algoFarmAdapter.file_processors.token_mapping_processor import TokenMappingProcessor
 
 pd.set_option('display.max_colwidth', 1000)
 pd.set_option('display.max_columns', None)
@@ -17,7 +20,8 @@ class LiveMarketDataSimulator(DateRangeProcessor):
         super().__init__(start_date, end_date, influx_client_manager)
         self.connection = BotoConnectionManager(bucket_name)
         self.all_files = self.connection.list_files_in_bucket()
-        self.mktDataOutputDir = CommonUtils.getFilePathOutputDirectory()
+        self.mktDataOutputDir = CommonUtils.get_file_path_output_directory()
+        self.data_repository = DataRepository()
         self.producer_config = {
             'bootstrap.servers': PropertyManager.getValue(AppConstants.BOOTSTRAP_SERVERS),
             'batch.size': 163840,
@@ -27,6 +31,8 @@ class LiveMarketDataSimulator(DateRangeProcessor):
         self.marketDataProducer = Producer(self.producer_config)
         self.marketDataProducer.flush(timeout=1)
         self.kafkaTopic = kafkaTopic
+        self.token_mapping_processor = None
+
     def timestamp_to_datetime(self,timestamp):
         return datetime.utcfromtimestamp(timestamp / 1000.0)
 
@@ -34,6 +40,22 @@ class LiveMarketDataSimulator(DateRangeProcessor):
         json_string = json.dumps(message)
         self.marketDataProducer.produce(self.kafkaTopic, json_string)
         self.marketDataProducer.poll(0)
+
+    def save_subscription_symbols(self, subscribed_symbol_list, subscribed_token_list):
+        current_datetime = datetime.now()
+        ticker_subscription_list = []
+        repository_info = RepositoryInfo(cache_domain=False)
+
+        for symbol, token in zip(subscribed_symbol_list, subscribed_token_list):
+            ticker_subscription = TickerSubscription(
+                ticker_symbol=symbol,
+                token=token,  # Assuming you want to use the token here
+                subscription_date=current_datetime
+            )
+            ticker_subscription_list.append(ticker_subscription)
+
+        ticker_subscription_do = TickerSubscriptionDO(data=ticker_subscription_list)
+        self.data_repository.save(ticker_subscription_do, repository_info)
 
     def process(self, date):
         date_str = 'Market_Data_' + date.strftime("%Y%m%d") + '.7z'
@@ -43,13 +65,19 @@ class LiveMarketDataSimulator(DateRangeProcessor):
                 local_filename = file_name.split('/')[-1]
                 local_file_path = os.path.join(self.mktDataOutputDir, local_filename)
                 current_time = datetime.now()
+
                 if not os.path.exists(local_file_path):
                     print(f'Downloading {file_name} to {local_filename}')
                     self.connection.download_object(file_name, output_directory_path)
                     CommonUtils.extract_data_from_7zip_to_current_path(output_directory_path, self.mktDataOutputDir)
+                    self.token_mapping_processor = TokenMappingProcessor("Token_mapping.csv", self.mktDataOutputDir)
+                    symbol_list,token_list = self.token_mapping_processor.get_symbols_and_tokens()
+                    self.save_subscription_symbols(symbol_list,token_list)
+                    print("Completed writing subscribed symbols and tokens to Database")
                 else:
                     print(f'File {local_filename} already exists, skipping download.')
-                CommonUtils.copyFile(self.mktDataOutputDir,CommonUtils.getPathToProjectDirectory("data"),"Token_mapping.csv")
+                # CommonUtils.copy_file(self.mktDataOutputDir,CommonUtils.get_path_to_project_directory("data"),"Token_mapping.csv")
+
                 all_pkl_files = [f for f in os.listdir(self.mktDataOutputDir) if
                                      f.endswith('.pkl')]
                 all_pkl_files.sort(key=lambda f: int(f.split('example')[1].split('.')[0]))
