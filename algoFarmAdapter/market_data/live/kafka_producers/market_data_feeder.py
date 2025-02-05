@@ -44,7 +44,8 @@ class MarketDataFeeder:
         self.sws.subscribe("new_access1", 3, self.token_list)
 
     def on_error(self,wsapp, error):
-        print(error)
+        error_message = str(error)  # Extract exception message
+        logging.error("WebSocket Error: %s", error_message, exc_info=True)
 
     def on_close(self,wsapp):
         print("Close")
