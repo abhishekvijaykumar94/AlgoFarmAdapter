@@ -13,23 +13,29 @@ from algoFarmAdapter.converter.smart_api_equity_market_data_converter import Sma
     SmartApiInputFields
 
 
-class LiveMarketDataRedisConsumer(MarketDataConsumerAsync):
+class LiveMarketDataConsumer(MarketDataConsumerAsync):
 
     def __init__(self, kafka_topic:str, bootstrap_servers:str, kafka_group_id:str,token_symbol_map:Dict,
-                 retention_seconds, batch_size=5000, flush_interval=20):
+                 retention_seconds, batch_size=5000, flush_interval=20,persist_to_cache=True,persist_to_influx=True):
         super().__init__(kafka_topic, bootstrap_servers, kafka_group_id, batch_size, flush_interval)
-        self.pickle_output_path = CommonUtils.getFilePathOutputDirectory()
+        self.pickle_output_path = CommonUtils.get_file_path_output_directory()
         self.retention_seconds = retention_seconds
         self.token_symbol_map = token_symbol_map
         self.object_key = EquityMarketDataObject.__name__
-        self.data_repoistory = DataRepository()
+        self.data_repository = DataRepository()
         self.smartApiEquityMarketDataConverter = SmartApiEquityMarketDataConverter()
+        self.persist_to_cache = persist_to_cache
+        self.persist_to_influx = persist_to_influx
 
     async def output_Data(self, batch_data:List[json]):
-        repository_info = RepositoryInfo(retention_seconds=self.retention_seconds,converter=self.smartApiEquityMarketDataConverter)
+        repository_info = RepositoryInfo(retention_seconds=self.retention_seconds,
+                                         converter=self.smartApiEquityMarketDataConverter,
+                                         cache_domain=self.persist_to_cache,
+                                         database_domain=self.persist_to_influx
+                                         )
         batch_data_df = pd.DataFrame(batch_data)
-        batch_data_df['symbol'] = batch_data_df['token'].astype(int).map(self.token_symbol_map)
+        batch_data_df['symbol'] = batch_data_df['token'].map(self.token_symbol_map)
         native_json_list = self.smartApiEquityMarketDataConverter.convert_to_native_format(batch_data_df)
         equity_market_data = EquityMarketDataObject(data=native_json_list,time_series=batch_data_df[SmartApiInputFields.exchange_timestamp],
                                                     data_key=batch_data_df[TickMarketFeedColumns.tag])
-        self.data_repoistory.save(equity_market_data, repository_info)
+        self.data_repository.save(equity_market_data, repository_info)
