@@ -4,13 +4,15 @@ import os
 from datetime import datetime
 
 import pandas as pd
-from algoLibs import DataRepository, EquityMarketDataObject, RepositoryInfo
+from algoLibs import DataRepository, EquityMarketDataObject, RepositoryInfo, TickMarketFeedColumns
 from algoLibs.file_processors.date_range_processor import DateRangeProcessor
 from algoLibs.market_data_stream.connection_manager.boto_connection_manager import BotoConnectionManager
 from algoLibs.utils.common_utils import CommonUtils
 from pandas import json_normalize
 
-from algoFarmAdapter.converter.smart_api_equity_market_data_converter import SmartApiEquityMarketDataConverter
+from algoFarmAdapter.converter.smart_api_equity_market_data_converter import SmartApiEquityMarketDataConverter, \
+    SmartApiInputFields
+from algoFarmAdapter.file_processors.token_mapping_processor import TokenMappingProcessor
 
 pd.set_option('display.max_colwidth', 1000)
 pd.set_option('display.max_columns', None)
@@ -50,12 +52,14 @@ class DailyMarketDataDownloader(DateRangeProcessor):
                     if not os.path.exists(local_file_path):
                         self.connection.download_object(file_name, output_directory_path)
                         CommonUtils.extract_data_from_7zip_to_current_path(output_directory_path, self.mkt_data_output_dir)
+
                     else:
                         print(f'File {local_filename} already exists, skipping download.')
                         migration_token_processor = None
-
-                    filter_date = pd.to_datetime(file_name.split('_')[2].split('.')[0], format='%Y%m%d')
-                    token_symbol_map = migration_token_processor.get_migration_token_to_symbol_dict(filter_date)
+                    token_mapping_processor = TokenMappingProcessor("Token_mapping.csv",self.mkt_data_output_dir)
+                    token_symbol_map = token_mapping_processor.get_token_to_symbol_dict()
+                    # filter_date = pd.to_datetime(file_name.split('_')[2].split('.')[0], format='%Y%m%d')
+                    # token_symbol_map = migration_token_processor.get_migration_token_to_symbol_dict(filter_date)
 
                     all_pkl_files = [
                         f for f in os.listdir(self.mkt_data_output_dir) if f.endswith('.pkl')
@@ -81,8 +85,10 @@ class DailyMarketDataDownloader(DateRangeProcessor):
 
                                 points = smart_api_mkt_data_converter.convert_to_native_format(ticks_df)
 
-                                equityMarketDataOject = EquityMarketDataObject(points)
-                                self.data_repository.save(repository_info,equityMarketDataOject)
+                                equity_market_data_object = EquityMarketDataObject(data=points,
+                                                                            time_series=ticks_df[SmartApiInputFields.exchange_timestamp],
+                                                                            data_key=ticks_df[TickMarketFeedColumns.tag])
+                                self.data_repository.save(equity_market_data_object,repository_info)
 
                                 del ticks_df, dbfile_list
                                 gc.collect()
