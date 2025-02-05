@@ -289,6 +289,8 @@ class SmartWebSocketV2(object):
             print("Attempting to resubscribe/reconnect...")
             self.current_retry_attempt += 1
             self.connect()
+        else:
+            self.on_error(wsapp,error)
 
     def _on_close(self, wsapp):
         # self.HB_THREAD_FLAG = False
