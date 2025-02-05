@@ -1,25 +1,30 @@
+
 import json
 from dataclasses import asdict
+from datetime import datetime
 
-from algoLibs import Signal, MessageRouter
-# from algofarm.LiveTrading.OrderManagement.OrderRequests import PlaceOrderRequest, ModifyOrderRequest, \
-#     CancelOrderRequest, PlaceOrderResponse, ModifyOrderResponse, CancelOrderResponse
-
+from algoLibs import Signal, MessageRouter, Logger, OrderDataObject, RepositoryInfo, TransactionType, DataRepository
 from algoLibs.live_trading.events.events import EventType, Event
 from algoLibs.live_trading.services.core_micro_service import CoreMicroService
-
+from algoFarmAdapter import OrderStatus, Order
+from algoFarmAdapter.converter.order_data_converter import OrderDataConverter
 from algoFarmAdapter.external.smart_api_connection_manager import SmartApiConnectionManager
 from algoFarmAdapter.order_management import PlaceOrderRequest, ModifyOrderRequest, CancelOrderRequest, \
     PlaceOrderResponse, ModifyOrderResponse, CancelOrderResponse
+
+log = Logger(__name__, log_file=True)
 
 class ExecutionHandler(CoreMicroService):
     def __init__(self, service_name, kafka_bootstrap_servers, api_key, consume_topic=EventType.Signal_Event.name):
         super().__init__(service_name, kafka_bootstrap_servers,kafka_consumer_callback=self.process_signal_event,
                          consume_topics=[consume_topic])
         self.connection_manager = SmartApiConnectionManager(api_key)
+        data, feedToken = self.connection_manager.generate_session()
         self.consume_topic = consume_topic
         self.router = MessageRouter()
         self.register_handlers()
+        self.data_repository=DataRepository()
+        self.order_data_converter = OrderDataConverter()
 
     def register_handlers(self):
         @self.router.route("PlaceOrderMessage")
@@ -30,7 +35,11 @@ class ExecutionHandler(CoreMicroService):
                 # Convert Signal to PlaceOrderRequest
                 place_order_request = self.convert_signal_to_place_order_request(signal)
                 # Place the order
-                response_data = self.connection_manager.smartConnect.placeOrder(asdict(place_order_request))
+                place_order_request_dict = asdict(place_order_request)
+                del place_order_request_dict["_message_type"]
+                log.info(f"Sending Place Order Request at: {datetime.now()}")
+                response_data = self.connection_manager.smart_connect.placeOrderFullResponse(place_order_request_dict)
+
                 # Create and process PlaceOrderResponse
                 response_obj = PlaceOrderResponse(
                     status=True,  # Update based on actual response
@@ -38,7 +47,37 @@ class ExecutionHandler(CoreMicroService):
                     errorcode="",
                     data=response_data  # Adjust according to your actual response structure
                 )
-                print(response_obj)
+                if response_data["message"] == "SUCCESS":
+                    place_order_request.orderid = response_data["data"]["orderid"]
+                    place_order_request.uniqueorderid = response_data["data"]["uniqueorderid"]
+                    place_order_request.orderstatus = OrderStatus.AB
+                    # place_order_request_dict = json.loads(place_order_request)
+                    # place_order_request_dict["strategy"] = signal.strategy_id
+                    # Unpack the dictionary into the dataclass
+
+                    order = Order(orderid = response_data["data"]["orderid"],
+                                  variety = place_order_request.variety,
+                                  ordertype=place_order_request.ordertype,
+                                  producttype=place_order_request.producttype,
+                                  price="0",
+                                  quantity=place_order_request.quantity,
+                                  duration=place_order_request.duration,
+                                  squareoff="0",
+                                  stoploss="0",
+                                  tradingsymbol=place_order_request.tradingsymbol,
+                                  transactiontype=place_order_request.transactiontype,
+                                  exchange=place_order_request.exchange,
+                                  symboltoken=place_order_request.symboltoken,
+                                  strategy=signal.strategy_id
+                                  )
+                    order_data_object_list = []
+                    order_data_object_list.append(order)
+                    order_data_object = OrderDataObject(data=self.order_data_converter.to_data_object(order_data_object_list))
+                    self.data_repository.save(order_data_object, RepositoryInfo(cache_domain=False))
+                    log.info("Saving Order information %s",place_order_request)
+                else:
+                    log.info("Order response object %s ", response_obj)
+
             except Exception as e:
                 print(f"Error in handle_place_order: {e}")
 
@@ -82,10 +121,11 @@ class ExecutionHandler(CoreMicroService):
         await self.start_kafka()
         await self.consume_messages()
 
-    async def process_signal_event(self, signal_event: Event):
+
+    async def process_signal_event(self, signal_event_str: str):
         try:
             # Parse the JSON payload
-            message_data = json.loads(signal_event.payload)
+            message_data = json.loads(signal_event_str)
             # Get the message type from the data
             message_type = message_data.get("_message_type")
             if not message_type:
@@ -96,24 +136,31 @@ class ExecutionHandler(CoreMicroService):
         except Exception as e:
             print(f"Error in process_signal_event: {e}")
 
+
+
     def convert_signal_to_place_order_request(self, signal: Signal) -> PlaceOrderRequest:
         # Fetch the symbol token
         symbol_token = signal.token
         if not symbol_token:
             raise ValueError(f"Symbol token not found for {signal.trading_symbol} on {signal.exchange}")
 
+        transactiontype =  TransactionType.convert_to_buy_sell(signal.transaction_type)
+        if signal.ordertype.upper()=="MARKET":
+            price = "79.0"
+        else:
+            price = signal.ordertype.upper()=="MARKET"
         # Create the PlaceOrderRequest object
         place_order_request = PlaceOrderRequest(
-            variety=signal.variety.upper(),
+            variety="NORMAL",
             tradingsymbol=signal.trading_symbol,
             symboltoken=symbol_token,
-            transactiontype=signal.transaction_type.value,
+            transactiontype=transactiontype,
             exchange=signal.exchange.upper(),
             ordertype=signal.ordertype.upper(),
-            producttype=signal.product_type.upper(),
+            producttype="INTRADAY",#signal.product_type.upper(),
             duration=signal.duration.upper(),
             quantity=str(signal.quantity),
-            price="0",  # Assuming market order; adjust as necessary
+            price=price,  # Assuming market order; adjust as necessary
             squareoff="0",
             stoploss="0"
         )
